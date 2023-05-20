@@ -1,0 +1,112 @@
+import pandas as pd
+import numpy as np
+import panel as pn
+import matplotlib.pyplot as plt
+
+## file_path = ##https://www.kaggle.com/datasets/die9origephit/amazon-data-science-books ##
+## Owner: 'Iron486' ##
+df = pd.read_csv(file_path)
+
+# Convert the columns to float
+df['star1'] = df['star1'].str.rstrip('%').astype('float') / 100.0
+df['star2'] = df['star2'].str.rstrip('%').astype('float') / 100.0
+df['star4'] = df['star4'].str.rstrip('%').astype('float') / 100.0
+df['star5'] = df['star5'].str.rstrip('%').astype('float') / 100.0
+
+# Perform aggregation
+df['high_ratings'] = df['star5'] + df['star4']
+df['low_ratings'] = df['star1'] + df['star2']
+
+df['positivity_ratio'] = df['high_ratings'] / df['low_ratings']
+df['polarity_ratio'] = df['star5'] / df['star1']
+
+# Replace infinity values with NaN
+df = df.replace([np.inf, -np.inf], np.nan)
+
+# Remove rows with NaN values
+df = df.dropna()
+
+# Create a new dataframe with the desired columns
+df_new = df[['title', 'polarity_ratio', 'n_reviews', 'avg_reviews', 'positivity_ratio']]
+
+df_new.to_csv('output.csv', index=False)
+
+# Convert the dataframe to a Panel table
+table = pn.widgets.DataFrame(df_new, name='Dataframe')
+table.sizing_mode = 'stretch_both'
+
+# Replace commas in 'n_reviews' column
+df_new['n_reviews'] = df_new['n_reviews'].str.replace(',', '')
+
+# Convert 'n_reviews' to numeric
+df_new['n_reviews'] = pd.to_numeric(df_new['n_reviews'])
+
+# Sort df_new by 'n_reviews' in ascending order
+df_new = df_new.sort_values(by='n_reviews')
+
+# Define bin edges and labels
+bins = np.arange(0, df_new['n_reviews'].max() + 20, 20)
+labels = [f'{i}-{i+19}' for i in bins[:-1]]
+
+# Create a new column 'review_bins' in df_new
+df_new['review_bins'] = pd.cut(df_new['n_reviews'], bins=bins, labels=labels, right=False)
+
+# Calculate mean polarity ratio for each bin
+df_grouped = df_new.groupby('review_bins')['polarity_ratio'].mean().reset_index()
+
+##Bar Tab##
+plt.figure(figsize=(10, 6))
+plt.bar(df_grouped['review_bins'], df_grouped['polarity_ratio'])
+plt.title("Bar Chart: Mean Polarity Ratio vs Number of Reviews")
+plt.xlabel('Number of Reviews')
+plt.ylabel('Mean Polarity Ratio')
+plt.xticks(rotation=90)  # Rotate x-axis labels for better readability
+bar_plot_panel = pn.pane.Matplotlib(plt.gcf(), tight=True)
+locs, labels = plt.xticks()
+plt.xticks(locs[::100], labels[::100])
+
+##Scatter Tab##
+plt.figure(figsize=(10, 6))
+plt.scatter(df_new['n_reviews'], df_new['polarity_ratio'])
+plt.title("Scatter Plot: Polarity Ratio vs Number of Reviews")
+
+plt.xlabel('Number of Reviews')
+plt.ylabel('Polarity Ratio')
+scatter_plot_panel = pn.pane.Matplotlib(plt.gcf(), tight=True)
+locs, labels = plt.xticks()
+plt.xticks(locs[::100], labels[::100])
+
+bar_plot_panel.sizing_mode = 'stretch_both'
+scatter_plot_panel.sizing_mode = 'stretch_width'
+
+# Create a Tab layout and add the panels to it
+tabs = pn.Tabs(("Data Table", table), ("Bar Chart", bar_plot_panel), ("Scatter Plot", scatter_plot_panel))
+
+##Histogram Tab##
+# Number of samples to take
+num_samples = 5000
+
+# Size of each sample
+sample_size = 300
+
+# List to store sample means
+sample_means = []
+
+# Perform sampling
+for _ in range(num_samples):
+    sample = df_new['polarity_ratio'].sample(n=sample_size, replace=True)
+    sample_means.append(sample.mean())
+plt.figure(figsize=(10, 6))
+plt.hist(sample_means, bins=30, edgecolor='black')
+plt.title("Histogram of Sample Means (Polarity Ratio)")
+plt.xlabel('Sample Mean Polarity Ratio')
+plt.ylabel('Frequency')
+
+# Create a Panel object for the histogram
+histogram_panel = pn.pane.Matplotlib(plt.gcf(), tight=True)
+
+# Add it as a new tab
+tabs.append(("CLT Histogram", histogram_panel))
+
+# Show the tabs
+tabs.show()
